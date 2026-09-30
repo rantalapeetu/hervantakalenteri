@@ -1,2 +1,2 @@
 # hervantakalenteri
-tärkeimmät tapahtumat listattuna yhteen kalenteriin hervannan opiskelijalle
+tärkeimmät tapahtumat listattuna yhteen kalenteriin hervantalaiselle opiskelijalle
