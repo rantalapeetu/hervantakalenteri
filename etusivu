@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hervannan opiskelijakalenteri</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14213d;--mute:#5b677a;--line:#d5dbe3;--acc:#0f766e;--warn:#b42318;--ok:#0f766e}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1420;--card:#172033;--ink:#e8edf5;--mute:#9aa7bb;--line:#2a3550;--acc:#4fd1c5;--warn:#ff8a7a;--ok:#4fd1c5}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+main{max-width:720px;margin:0 auto;padding:20px 16px 48px}
+h1{font:700 1.7rem/1.15 "Space Grotesk",system-ui,sans-serif;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 18px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 14px;font:inherit;font-size:.92rem;cursor:pointer;text-transform:capitalize}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+label.chk{display:flex;gap:8px;align-items:center;color:var(--mute);font-size:.92rem;margin-bottom:18px}
+h2{font:700 1rem/1.2 "Space Grotesk",system-ui,sans-serif;margin:22px 0 8px;text-transform:capitalize}
+.ev{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:grid;grid-template-columns:54px 1fr;gap:12px}
+.time{font:700 1.05rem "Space Grotesk",system-ui,sans-serif}
+.name{font-weight:600}
+.name a{color:inherit}
+.meta{color:var(--mute);font-size:.9rem}
+.src{display:inline-block;font-size:.78rem;border:1px solid var(--line);border-radius:6px;padding:0 6px;margin-top:6px;color:var(--mute)}
+.reg{margin-top:8px;font-size:.9rem;display:flex;gap:8px;align-items:center}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:none}
+.reg.urgent{color:var(--warn);font-weight:600}.reg.urgent .dot{background:var(--warn)}
+.reg.closed{color:var(--mute)}.reg.closed .dot{background:var(--line)}
+.msg{color:var(--mute);padding:24px 0}
+</style>
+</head>
+<body>
+<main>
+<h1>Hervannan opiskelijakalenteri</h1>
+<p class="sub">Tapahtumat ja ilmoittautumisajat yhdessä paikassa.</p>
+<div class="chips" id="chips"></div>
+<label class="chk"><input type="checkbox" id="onlyReg"> Näytä vain tapahtumat, joihin pitää ilmoittautua</label>
+<div id="list"><div class="msg">Ladataan tapahtumia…</div></div>
+</main>
+<script>
+const SUPABASE_URL="https://dbhtudtfqjvdhehjbtxn.supabase.co";
+const SUPABASE_KEY="sb_publishable_lGVRsA1CdrL4h-T2muYHlA_bwnCSn6I"; // julkinen avain, turvallinen selaimessa
+const TZ="Europe/Helsinki";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtDay=d=>d.toLocaleDateString("fi-FI",{weekday:"long",day:"numeric",month:"numeric",timeZone:TZ});
+const fmtT=d=>d.toLocaleTimeString("fi-FI",{hour:"2-digit",minute:"2-digit",timeZone:TZ});
+let events=[],cat="kaikki";
+
+async function load(){
+  const start=new Date();start.setHours(0,0,0,0);
+  const url=SUPABASE_URL+"/rest/v1/events?select=*&order=starts_at.asc&limit=500&starts_at=gte."+encodeURIComponent(start.toISOString());
+  try{
+    const r=await fetch(url,{headers:{apikey:SUPABASE_KEY}});
+    if(!r.ok)throw new Error(r.status);
+    events=(await r.json()).map(e=>({...e,s:new Date(e.starts_at),r:e.registration_closes?new Date(e.registration_closes):null}));
+    render();
+  }catch(err){
+    $("list").innerHTML='<div class="msg">Tapahtumien lataaminen epäonnistui. Yritä hetken päästä uudelleen.</div>';
+  }
+}
+function reg(e){
+  if(!e.r)return"";
+  const ms=e.r-new Date();
+  if(ms<0)return'<div class="reg closed"><span class="dot"></span>Ilmoittautuminen on päättynyt</div>';
+  const days=Math.ceil(ms/864e5);
+  if(days<=1)return'<div class="reg urgent"><span class="dot"></span>Ilmoittautuminen sulkeutuu '+fmtDay(e.r)+' klo '+fmtT(e.r)+'</div>';
+  return'<div class="reg"><span class="dot"></span>Ilmoittautuminen auki, sulkeutuu '+fmtDay(e.r)+' ('+days+' pv)</div>';
+}
+function render(){
+  const cats=["kaikki",...new Set(events.map(e=>(e.category||"").toLowerCase()).filter(Boolean))];
+  if(!cats.includes(cat))cat="kaikki";
+  $("chips").innerHTML=cats.map(c=>'<button class="chip" aria-pressed="'+(c===cat)+'" data-c="'+esc(c)+'">'+esc(c)+'</button>').join("");
+  document.querySelectorAll(".chip").forEach(b=>b.onclick=()=>{cat=b.dataset.c;render()});
+  const only=$("onlyReg").checked;
+  const list=events.filter(e=>(cat==="kaikki"||(e.category||"").toLowerCase()===cat)&&(!only||e.r));
+  if(!list.length){$("list").innerHTML='<div class="msg">'+(events.length?"Ei tapahtumia tällä suodatuksella.":"Ei tulevia tapahtumia vielä.")+'</div>';return}
+  let out="",last="";
+  for(const e of list){
+    const k=fmtDay(e.s);
+    if(k!==last){out+="<h2>"+esc(k)+"</h2>";last=k}
+    const title=/^https?:\/\//.test(e.url||"")?'<a href="'+esc(e.url)+'" target="_blank" rel="noopener">'+esc(e.title)+'</a>':esc(e.title);
+    const meta=[e.organizer,e.location].filter(Boolean).map(esc).join(", ");
+    const src=e.source==="manual"?"Lisätty käsin":e.source;
+    out+='<div class="ev"><div class="time">'+fmtT(e.s)+'</div><div><div class="name">'+title+'</div>'+(meta?'<div class="meta">'+meta+'</div>':"")+'<span class="src">'+esc(src)+'</span>'+reg(e)+'</div></div>';
+  }
+  $("list").innerHTML=out;
+}
+$("onlyReg").onchange=render;
+load();
+</script>
+</body>
+</html>
