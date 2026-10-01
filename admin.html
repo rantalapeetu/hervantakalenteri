@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Ylläpito – Hervannan opiskelijakalenteri</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14213d;--mute:#5b677a;--line:#d5dbe3;--acc:#0f766e;--warn:#b42318}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1420;--card:#172033;--ink:#e8edf5;--mute:#9aa7bb;--line:#2a3550;--acc:#4fd1c5;--warn:#ff8a7a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+main{max-width:560px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.05rem;margin:28px 0 10px}
+.sub{color:var(--mute);margin:0 0 18px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+form{display:grid;gap:10px}
+label{display:grid;gap:4px;font-size:.9rem;color:var(--mute)}
+input,textarea{font:inherit;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%;min-width:0}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.p{font:inherit;font-weight:600;padding:11px;border-radius:8px;border:0;background:var(--acc);color:var(--bg);cursor:pointer}
+button.l{font:inherit;background:none;border:0;color:var(--mute);cursor:pointer;text-decoration:underline;padding:0}
+.st{min-height:1.4em;font-size:.92rem}.st.err{color:var(--warn)}.st.ok{color:var(--acc)}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}.row small{color:var(--mute);display:block}
+.row .b{display:flex;gap:6px;flex:none}
+.row button{font:inherit;border:1px solid var(--line);background:none;color:var(--ink);border-radius:8px;padding:4px 10px;cursor:pointer}
+.row button.d{color:var(--warn)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>Ylläpito</h1>
+<p class="sub" id="who">Kirjaudu sisään tai hae ylläpitäjäksi.</p>
+
+<section id="auth" class="box hide">
+<form id="authForm">
+<label>Sähköposti<input id="em" type="email" autocomplete="username" required></label>
+<label>Salasana (vähintään 8 merkkiä)<input id="pw" type="password" autocomplete="current-password" minlength="8" required></label>
+<button class="p" id="authBtn" type="submit">Kirjaudu</button>
+<div class="st" id="authSt" role="status"></div>
+</form>
+<p><button class="l" id="mode">Ei tunnusta? Rekisteröidy</button></p>
+</section>
+
+<section id="apply" class="box hide">
+<div id="applied" class="hide">Hakemuksesi on lähetetty. Saat oikeudet, kun ylläpitäjä on hyväksynyt sen.</div>
+<form id="applyForm">
+<p style="margin:0">Voit hakea oikeutta lisätä ja muokata tapahtumia. Ylläpitäjä hyväksyy hakemuksen.</p>
+<label>Nimi<input id="an" required></label>
+<label>Taho (esim. kilta, ainejärjestö)<input id="ao" required></label>
+<label>Miksi haet? (valinnainen)<textarea id="am" rows="3"></textarea></label>
+<button class="p" type="submit">Lähetä hakemus</button>
+<div class="st" id="applySt" role="status"></div>
+</form>
+</section>
+
+<section id="editor" class="hide">
+<div class="box">
+<form id="evForm">
+<label>Nimi *<input id="t" required></label>
+<label>Alkaa *<input id="s" type="datetime-local" required></label>
+<label>Paikka<input id="l"></label>
+<label>Järjestäjä<input id="o"></label>
+<label>Kategoria (esim. bileet, urheilu, ura, opinnot)<input id="c" list="cats"></label>
+<datalist id="cats"><option value="bileet"><option value="urheilu"><option value="ura"><option value="opinnot"></datalist>
+<label>Linkki<input id="u" type="url" placeholder="https://"></label>
+<label>Ilmoittautuminen päättyy<input id="r" type="datetime-local"></label>
+<button class="p" id="evBtn" type="submit">Lisää tapahtuma</button>
+<button class="l hide" id="cancel" type="button">Peruuta muokkaus</button>
+<div class="st" id="evSt" role="status"></div>
+</form>
+</div>
+<h2 id="mineH">Omat tapahtumat</h2>
+<div class="box" id="mine">Ladataan…</div>
+<div id="ownerOnly" class="hide">
+<h2>Hakemukset</h2><div class="box" id="reqs"></div>
+<h2>Ylläpitäjät</h2><div class="box" id="eds"></div>
+</div>
+</section>
+<p><button class="l hide" id="out">Kirjaudu ulos</button></p>
+</main>
+<script>
+const U="https://dbhtudtfqjvdhehjbtxn.supabase.co";
+const K="sb_publishable_lGVRsA1CdrL4h-T2muYHlA_bwnCSn6I"; // julkinen avain
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const say=(id,t,c)=>{const e=$(id);e.textContent=t;e.className="st "+(c||"")};
+let token=sessionStorage.getItem("tok")||"",me=sessionStorage.getItem("me")||"",role="",signup=false,editId=null,rows=[];
+
+async function api(path,{method="GET",body,prefer}={}){
+  const h={apikey:K,Authorization:"Bearer "+(token||K),"Content-Type":"application/json"};
+  if(prefer)h.Prefer=prefer;
+  const r=await fetch(U+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
+  if(r.status===401&&token){logout("Istunto vanheni. Kirjaudu uudelleen.");throw new Error("401")}
+  return r;
+}
+function logout(msg){token="";me="";role="";sessionStorage.clear();boot();if(msg)say("authSt",msg,"err")}
+const show=ids=>["auth","apply","editor"].forEach(x=>$(x).classList.toggle("hide",!ids.includes(x)));
+
+$("mode").onclick=()=>{signup=!signup;$("authBtn").textContent=signup?"Rekisteröidy":"Kirjaudu";$("mode").textContent=signup?"Onko sinulla tunnus? Kirjaudu":"Ei tunnusta? Rekisteröidy";say("authSt","")};
+$("authForm").onsubmit=async e=>{
+  e.preventDefault();say("authSt","Hetki…");
+  const body={email:$("em").value.trim(),password:$("pw").value};
+  try{
+    const r=await fetch(U+(signup?"/auth/v1/signup":"/auth/v1/token?grant_type=password"),{method:"POST",headers:{apikey:K,"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.msg||d.error_description||"virhe");
+    if(d.access_token){token=d.access_token;me=body.email.toLowerCase();sessionStorage.setItem("tok",token);sessionStorage.setItem("me",me);$("pw").value="";boot();return}
+    say("authSt","Tarkista sähköpostisi ja vahvista tunnus linkistä. Kirjaudu sen jälkeen sisään.","ok");
+  }catch(err){say("authSt",signup?"Rekisteröityminen epäonnistui: "+err.message:"Kirjautuminen epäonnistui. Tarkista sähköposti ja salasana.","err")}
+};
+$("out").onclick=()=>logout();
+
+async function boot(){
+  $("out").classList.toggle("hide",!token);
+  if(!token){show(["auth"]);$("who").textContent="Kirjaudu sisään tai hae ylläpitäjäksi.";return}
+  $("who").textContent="Kirjautunut: "+me;
+  role=await (await api("/rest/v1/rpc/my_role",{method:"POST",body:{}})).json();
+  if(role==="owner"||role==="editor"){show(["editor"]);$("ownerOnly").classList.toggle("hide",role!=="owner");$("mineH").textContent=role==="owner"?"Kaikki tapahtumat":"Omat tapahtumat";list();if(role==="owner")owner()}
+  else{
+    show(["apply"]);
+    const mine=await (await api("/rest/v1/editor_requests?select=id")).json();
+    const sent=Array.isArray(mine)&&mine.length>0;
+    $("applied").classList.toggle("hide",!sent);$("applyForm").classList.toggle("hide",sent);
+  }
+}
+$("applyForm").onsubmit=async e=>{
+  e.preventDefault();say("applySt","Lähetetään…");
+  const r=await api("/rest/v1/editor_requests",{method:"POST",prefer:"return=minimal",body:{name:$("an").value.trim(),organization:$("ao").value.trim(),message:$("am").value.trim()||null}});
+  if(r.ok)boot();else say("applySt","Lähetys epäonnistui.","err");
+};
+
+const loc=iso=>{const d=new Date(iso),p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"T"+p(d.getHours())+":"+p(d.getMinutes())};
+function reset(){editId=null;$("evForm").reset();$("evBtn").textContent="Lisää tapahtuma";$("cancel").classList.add("hide")}
+$("cancel").onclick=()=>{reset();say("evSt","")};
+$("evForm").onsubmit=async e=>{
+  e.preventDefault();say("evSt","Tallennetaan…");
+  const f={title:$("t").value.trim(),starts_at:new Date($("s").value).toISOString(),location:$("l").value.trim()||null,organizer:$("o").value.trim()||null,category:$("c").value.trim().toLowerCase()||null,url:$("u").value.trim()||null,registration_closes:$("r").value?new Date($("r").value).toISOString():null};
+  const r=editId?await api("/rest/v1/events?id=eq."+encodeURIComponent(editId),{method:"PATCH",prefer:"return=minimal",body:f})
+               :await api("/rest/v1/events",{method:"POST",prefer:"return=minimal",body:{...f,source:"manual",external_id:crypto.randomUUID()}});
+  if(r.ok){say("evSt",editId?"Muutokset tallennettu.":"Tapahtuma lisätty. Se näkyy kalenterissa heti.","ok");reset();list()}
+  else say("evSt",r.status===403?"Sinulla ei ole oikeutta tähän.":"Tallennus epäonnistui ("+r.status+").","err");
+};
+async function list(){
+  const q=role==="owner"?"":"&created_by=eq."+encodeURIComponent(me);
+  const r=await api("/rest/v1/events?select=*&order=starts_at.desc&limit=50"+q);
+  rows=await r.json();
+  $("mine").innerHTML=rows.length?rows.map(x=>'<div class="row"><div>'+esc(x.title)+'<small>'+new Date(x.starts_at).toLocaleString("fi-FI",{dateStyle:"short",timeStyle:"short",timeZone:"Europe/Helsinki"})+'</small></div><div class="b"><button data-e="'+esc(x.id)+'">Muokkaa</button><button class="d" data-d="'+esc(x.id)+'">Poista</button></div></div>').join(""):"Ei tapahtumia.";
+  $("mine").querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>{
+    const x=rows.find(y=>y.id===b.dataset.e);editId=x.id;
+    $("t").value=x.title;$("s").value=loc(x.starts_at);$("l").value=x.location||"";$("o").value=x.organizer||"";$("c").value=x.category||"";$("u").value=x.url||"";$("r").value=x.registration_closes?loc(x.registration_closes):"";
+    $("evBtn").textContent="Tallenna muutokset";$("cancel").classList.remove("hide");say("evSt","Muokataan: "+x.title);scrollTo({top:0,behavior:"smooth"});
+  });
+  $("mine").querySelectorAll("[data-d]").forEach(b=>b.onclick=async()=>{if(confirm("Poistetaanko tapahtuma?")){await api("/rest/v1/events?id=eq."+encodeURIComponent(b.dataset.d),{method:"DELETE"});list()}});
+}
+async function owner(){
+  const rq=await (await api("/rest/v1/editor_requests?select=*&order=created_at.asc")).json();
+  $("reqs").innerHTML=rq.length?rq.map(x=>'<div class="row"><div>'+esc(x.name)+', '+esc(x.organization)+'<small>'+esc(x.email)+(x.message?' – '+esc(x.message):'')+'</small></div><div class="b"><button data-a="'+esc(x.id)+'" data-m="'+esc(x.email)+'">Hyväksy</button><button class="d" data-r="'+esc(x.id)+'">Hylkää</button></div></div>').join(""):"Ei odottavia hakemuksia.";
+  $("reqs").querySelectorAll("[data-a]").forEach(b=>b.onclick=async()=>{
+    await api("/rest/v1/editors",{method:"POST",prefer:"return=minimal",body:{email:b.dataset.m.toLowerCase()}});
+    await api("/rest/v1/editor_requests?id=eq."+encodeURIComponent(b.dataset.a),{method:"DELETE"});owner()});
+  $("reqs").querySelectorAll("[data-r]").forEach(b=>b.onclick=async()=>{await api("/rest/v1/editor_requests?id=eq."+encodeURIComponent(b.dataset.r),{method:"DELETE"});owner()});
+  const ed=await (await api("/rest/v1/editors?select=email&order=added_at.asc")).json();
+  $("eds").innerHTML=ed.length?ed.map(x=>'<div class="row"><div>'+esc(x.email)+'</div><div class="b"><button class="d" data-x="'+esc(x.email)+'">Poista oikeudet</button></div></div>').join(""):"Ei vielä muita ylläpitäjiä.";
+  $("eds").querySelectorAll("[data-x]").forEach(b=>b.onclick=async()=>{if(confirm("Poistetaanko oikeudet?")){await api("/rest/v1/editors?email=eq."+encodeURIComponent(b.dataset.x),{method:"DELETE"});owner()}});
+}
+boot();
+</script>
+</body>
+</html>
